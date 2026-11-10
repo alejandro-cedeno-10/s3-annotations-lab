@@ -1,0 +1,4 @@
+Quarterly storage report
+Total objects: 4.2 million. Growth: 6 percent quarter over quarter.
+Top finding: 31 percent of objects have no descriptive context attached.
+Recommendation: enrich new uploads automatically and backfill the rest in batches.

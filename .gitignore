@@ -1,0 +1,31 @@
+# Node
+node_modules/
+dist/
+*.log
+
+# Run outputs and local lab state
+results/
+.lab/
+
+# Secrets and local config
+.env
+*.pem
+*.key
+
+# Images are published in the article only, never in this repository
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.svg
+*.bmp
+*.ico
+*.tif
+*.tiff
+
+# Generated pages
+*.html
+
+# Local spec-driven workflow notes
+openspec/

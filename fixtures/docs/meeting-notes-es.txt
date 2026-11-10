@@ -1,0 +1,4 @@
+Notas de reunion: planificacion del trimestre
+Asistentes: equipo de producto y equipo de datos (nombres omitidos).
+Acuerdos: priorizar la migracion de metadatos, revisar costes de consulta, definir responsables.
+Pendiente: confirmar fechas con el equipo de plataforma.

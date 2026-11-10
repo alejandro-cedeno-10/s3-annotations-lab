@@ -1,0 +1,47 @@
+{
+  "name": "s3-annotations-lab",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "eslint .",
+    "build:lambda": "tsx scripts/build-lambda.ts",
+    "smoke": "tsx scripts/smoke-handler.ts",
+    "deploy": "tsx scripts/deploy.ts",
+    "enable-annotation-table": "tsx scripts/enable-annotation-table.ts",
+    "teardown": "tsx scripts/teardown.ts",
+    "verify-clean": "tsx scripts/verify-clean.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-athena": "^3.1165.0",
+    "@aws-sdk/client-bedrock-runtime": "^3.1165.0",
+    "@aws-sdk/client-cloudwatch-logs": "^3.1165.0",
+    "@aws-sdk/client-eventbridge": "^3.1165.0",
+    "@aws-sdk/client-glue": "^3.1165.0",
+    "@aws-sdk/client-iam": "^3.1165.0",
+    "@aws-sdk/client-lambda": "^3.1165.0",
+    "@aws-sdk/client-s3": "^3.1165.0",
+    "@aws-sdk/client-s3tables": "^3.1165.0",
+    "@aws-sdk/client-sts": "^3.1165.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@smithy/util-stream": "^4.8.2",
+    "@types/node": "^26.6.6",
+    "aws-sdk-client-mock": "^4.1.0",
+    "esbuild": "^0.28.2",
+    "eslint": "^10.14.0",
+    "fflate": "^0.8.3",
+    "tsx": "^4.23.15",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.72.2",
+    "vitest": "^5.1.0"
+  }
+}

@@ -1,0 +1,5 @@
+FACTURA 0001-2026
+Proveedor: Suministros Ficticios S.A.
+Cliente: Ana Ejemplo, documento 000000000, telefono 555-0100
+Concepto: 10 licencias de software, 12 horas de soporte
+Total: 1.250,00 USD. Vence el 2026-12-15.
