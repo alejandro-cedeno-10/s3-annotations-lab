@@ -96,7 +96,7 @@ Each writes `results/<experiment>.json` (timestamps, inputs, observed outputs an
 | 06 | Real pipeline: uploads the fixtures, polls until `ai.classification` appears, records upload-to-annotation latency, validates the payload with the zod schema, and checks whether the injection fixture changed the label. |
 | 07 | How long until annotations show up in the managed `annotation` table of S3 Metadata. |
 
-`ObjectIfMatch` validates the ETag of the parent object, not of the annotation. It stops an annotation from being attached to a version that has since been replaced, which is what the Lambda uses it for. It does not serialize two writers of the same annotation name; experiment 05 shows what that costs.
+`ObjectIfMatch` validates the ETag of the parent object, not of the annotation. When a `VersionId` is also sent, the ETag is compared with that version, so it does not detect that a newer version replaced it: the annotation lands on the version that was read, which is what the Lambda relies on. It does not serialize two writers of the same annotation name; experiment 05 shows what that costs.
 
 ### Experiment 7 and what it does not touch
 
