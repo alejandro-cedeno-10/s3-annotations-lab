@@ -61,11 +61,12 @@ async function readObjectText(
 /**
  * Builds the EventBridge "Object Created" handler.
  *
- * The read and the write are pinned to the VersionId seen at the start, so the classification is
- * always attached to the version that was read, even if a newer version replaced it meanwhile
- * (the new upload emits its own event). ObjectIfMatch then compares the ETag of that same version,
- * so it does not detect replacement; "skipped-stale" only fires when that version's ETag changed.
- * Neither condition serializes writers of the same annotation name.
+ * The version-id carried by the event is used for the read and the write; without one (unversioned
+ * bucket) the handler falls back to the version HeadObject returns. With an explicit VersionId the
+ * classification is attached to the version that was read, even if a newer version exists, and
+ * ObjectIfMatch compares the ETag of that same version, so it does not detect a newer one. A 412
+ * PreconditionFailed on read or write is reported as "skipped-stale". None of this serializes
+ * writers of the same annotation name.
  */
 export function createEnrichmentHandler(deps: EnrichmentDependencies) {
   return async function handle(rawEvent: unknown): Promise<EnrichmentOutcome> {
