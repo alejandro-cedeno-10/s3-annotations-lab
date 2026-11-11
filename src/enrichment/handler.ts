@@ -61,10 +61,11 @@ async function readObjectText(
 /**
  * Builds the EventBridge "Object Created" handler.
  *
- * The ETag read at the start is sent as ObjectIfMatch on the write, so a classification is never
- * attached to a version that changed while the model was running; that case is reported as
- * "skipped-stale" because the new upload emits its own event. The condition protects against object
- * replacement only: it does not serialize writers of the same annotation name.
+ * The read and the write are pinned to the VersionId seen at the start, so the classification is
+ * always attached to the version that was read, even if a newer version replaced it meanwhile
+ * (the new upload emits its own event). ObjectIfMatch then compares the ETag of that same version,
+ * so it does not detect replacement; "skipped-stale" only fires when that version's ETag changed.
+ * Neither condition serializes writers of the same annotation name.
  */
 export function createEnrichmentHandler(deps: EnrichmentDependencies) {
   return async function handle(rawEvent: unknown): Promise<EnrichmentOutcome> {
