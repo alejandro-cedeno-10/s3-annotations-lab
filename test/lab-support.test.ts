@@ -59,6 +59,12 @@ describe("infrastructure documents", () => {
     expect(s3?.Action).toContain("s3:PutObjectVersionAnnotation");
   });
 
+  it("grants no annotation read action, which the handler never uses", () => {
+    const actions = JSON.stringify(statements.map((statement) => statement.Action));
+    expect(actions).not.toContain("GetObjectAnnotation");
+    expect(actions).not.toContain("GetObjectVersionAnnotation");
+  });
+
   it("allows invoking only the Nova Lite profile and foundation model", () => {
     const bedrock = statements.find((statement) => statement.Action === "bedrock:InvokeModel");
     expect(bedrock?.Resource).toEqual([

@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { EXTRA_TAGS, labNames, labTags, parseExtraTags } from "../src/config/lab-config";
+import { describe, expect, it, vi } from "vitest";
+import { labNames, labTags, parseExtraTags } from "../src/config/lab-config";
 import { createBucketInput, createFunctionInput, createLogGroupInput, createRoleInput, putRuleInput, toTagList } from "../src/lab/create-inputs";
 import { lambdaTrustPolicy } from "../src/lab/iam-documents";
 
@@ -10,7 +10,7 @@ const asMap = (list: Array<{ Key?: string; Value?: string }> | undefined): Recor
 
 describe("tag set", () => {
   it("contains the lab keys plus any extra tags", () => {
-    expect(tags).toEqual({ ...EXTRA_TAGS, lab: "s3-annotations-lab", "run-id": "abcd1234" });
+    expect(tags).toMatchObject({ lab: "s3-annotations-lab", "run-id": "abcd1234" });
   });
 
   it("parses extra tags from a JSON object of strings", () => {
@@ -20,6 +20,16 @@ describe("tag set", () => {
   it("defaults to no extra tags", () => {
     expect(parseExtraTags(undefined)).toEqual({});
     expect(parseExtraTags("")).toEqual({});
+  });
+
+  it("explains malformed JSON without echoing the value", () => {
+    expect(() => parseExtraTags("{not json")).toThrow(/valid JSON/);
+  });
+
+  it("never lets extra tags override the lab tags", () => {
+    vi.stubEnv("LAB_EXTRA_TAGS", '{"lab":"x","run-id":"y"}');
+    expect(labTags("r1")).toMatchObject({ lab: "s3-annotations-lab", "run-id": "r1" });
+    vi.unstubAllEnvs();
   });
 
   it.each(['["a"]', '{"a":1}', "null", '"text"'])("rejects %s", (raw) => {

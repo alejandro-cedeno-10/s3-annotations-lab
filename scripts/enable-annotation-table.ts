@@ -1,16 +1,13 @@
 import { CreateRoleCommand, PutRolePolicyCommand } from "@aws-sdk/client-iam";
 import { CreateBucketMetadataConfigurationCommand, GetBucketMetadataConfigurationCommand } from "@aws-sdk/client-s3";
 import { ListTableBucketsCommand } from "@aws-sdk/client-s3tables";
-import { GetCallerIdentityCommand } from "@aws-sdk/client-sts";
-import { labNames, labTags, MANIFEST_PATH, METADATA_TABLES } from "../src/config/lab-config";
+import { labNames, labTags, MANIFEST_PATH, METADATA_TABLES, ROLE_PROPAGATION } from "../src/config/lab-config";
 import { createLabClients, type LabClients } from "../src/lab/aws-clients";
 import { createRoleInput } from "../src/lab/create-inputs";
 import { metadataReadPolicy, metadataTrustPolicy } from "../src/lab/iam-documents";
 import { Manifest } from "../src/lab/manifest";
-import { retry } from "../src/lab/retry";
-
-const ROLE_PROPAGATION_ATTEMPTS = 12;
-const ROLE_PROPAGATION_DELAY_MS = 5000;
+import { assertManifestMatchesCaller, requireValue } from "../src/lab/account-guard";
+import { isMetadataRoleNotReady, retry } from "../src/lab/retry";
 
 async function awsManagedTableBucketExists(clients: LabClients): Promise<boolean> {
   const page = await clients.s3tables.send(
@@ -37,13 +34,8 @@ async function createMetadataRole(clients: LabClients, manifest: Manifest, accou
       PolicyDocument: JSON.stringify(metadataReadPolicy(names.bucket)),
     }),
   );
-  return role.Role?.Arn ?? "";
+  return requireValue(role.Role?.Arn, "the metadata role ARN");
 }
-
-const isRolePropagationError = (error: unknown): boolean => {
-  const { name, message } = error as { name?: string; message?: string };
-  return name === "InvalidRequest" || /role/i.test(message ?? "");
-};
 
 async function createConfiguration(clients: LabClients, bucket: string, roleArn: string): Promise<void> {
   await retry(
@@ -58,7 +50,7 @@ async function createConfiguration(clients: LabClients, bucket: string, roleArn:
           },
         }),
       ),
-    { attempts: ROLE_PROPAGATION_ATTEMPTS, delayMs: ROLE_PROPAGATION_DELAY_MS, shouldRetry: isRolePropagationError },
+    { ...ROLE_PROPAGATION, shouldRetry: isMetadataRoleNotReady },
   );
 }
 
@@ -70,7 +62,7 @@ async function main(): Promise<void> {
   const clients = createLabClients();
   const manifest = Manifest.load(MANIFEST_PATH);
   const names = labNames(manifest.runId);
-  const identity = await clients.sts.send(new GetCallerIdentityCommand({}));
+  await assertManifestMatchesCaller(manifest, clients.sts);
 
   const alreadyExisted = await awsManagedTableBucketExists(clients);
   console.log(`AWS-managed table bucket "${METADATA_TABLES.tableBucketName}" existed before: ${alreadyExisted}`);
@@ -80,7 +72,7 @@ async function main(): Promise<void> {
     details: { createdByLab: String(!alreadyExisted) },
   });
 
-  const roleArn = await createMetadataRole(clients, manifest, identity.Account ?? "");
+  const roleArn = await createMetadataRole(clients, manifest, manifest.accountId);
   manifest.record({ type: "s3tables-namespace", id: names.metadataNamespace });
   manifest.record({ type: "bucket-metadata-config", id: names.bucket });
   await createConfiguration(clients, names.bucket, roleArn);

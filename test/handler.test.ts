@@ -70,6 +70,19 @@ describe("enrichment handler: stale ETag", () => {
   });
 });
 
+describe("enrichment handler: oversized object", () => {
+  it("skips an object above the size limit without reading its body", async () => {
+    s3Mock.on(HeadObjectCommand).resolves({ ETag: '"etag-1"', VersionId: "v1", ContentLength: 5 * 1024 * 1024 + 1 });
+    await expect(handler(objectCreatedEvent())).resolves.toEqual({
+      status: "skipped-too-large",
+      key: "docs/sample.txt",
+      bytes: 5 * 1024 * 1024 + 1,
+    });
+    expect(s3Mock.commandCalls(GetObjectCommand)).toHaveLength(0);
+    expect(s3Mock.commandCalls(PutObjectAnnotationCommand)).toHaveLength(0);
+  });
+});
+
 describe("enrichment handler: invalid input", () => {
   it("propagates invalid model output so the invocation is retried", async () => {
     bedrockMock.on(ConverseCommand).resolves(reply("no json at all"));

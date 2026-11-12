@@ -26,3 +26,18 @@ export async function retry<T>(operation: () => Promise<T>, options: RetryOption
   }
   throw lastError;
 }
+
+const errorParts = (error: unknown): { name: string; message: string } => {
+  const { name, message } = error as { name?: string; message?: string };
+  return { name: name ?? "", message: message ?? "" };
+};
+
+export const isLambdaRoleNotAssumable = (error: unknown): boolean => {
+  const { name, message } = errorParts(error);
+  return name === "InvalidParameterValueException" && /cannot be assumed/i.test(message);
+};
+
+export const isMetadataRoleNotReady = (error: unknown): boolean => {
+  const { name, message } = errorParts(error);
+  return name === "InvalidRequest" && /role/i.test(message);
+};

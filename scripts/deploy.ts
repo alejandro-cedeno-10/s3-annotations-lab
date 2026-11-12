@@ -15,7 +15,6 @@ import {
   PutBucketVersioningCommand,
   PutPublicAccessBlockCommand,
 } from "@aws-sdk/client-s3";
-import { GetCallerIdentityCommand } from "@aws-sdk/client-sts";
 import {
   EVENT_RULE,
   labNames,
@@ -24,17 +23,17 @@ import {
   LAMBDA_ZIP_PATH,
   MANIFEST_PATH,
   REGION,
+  ROLE_PROPAGATION,
   type LabNames,
 } from "../src/config/lab-config";
 import { createLabClients, type LabClients } from "../src/lab/aws-clients";
 import { createBucketInput, createFunctionInput, createLogGroupInput, createRoleInput, putRuleInput } from "../src/lab/create-inputs";
 import { executionPolicy, lambdaTrustPolicy } from "../src/lab/iam-documents";
 import { Manifest } from "../src/lab/manifest";
-import { retry } from "../src/lab/retry";
+import { callerAccountId, requireValue } from "../src/lab/account-guard";
+import { isLambdaRoleNotAssumable, retry } from "../src/lab/retry";
 
 const RUN_ID_BYTES = 4;
-const ROLE_PROPAGATION_ATTEMPTS = 12;
-const ROLE_PROPAGATION_DELAY_MS = 5000;
 const LAMBDA_ACTIVE_WAIT_SECONDS = 120;
 
 interface DeployState {
@@ -95,7 +94,7 @@ async function createExecutionRole(state: DeployState): Promise<string> {
     }),
   );
   console.log(`Execution role ready: ${names.executionRole}`);
-  return role.Role?.Arn ?? "";
+  return requireValue(role.Role?.Arn, "the execution role ARN");
 }
 
 async function createLogGroup({ clients, manifest, names, tags }: DeployState): Promise<void> {
@@ -106,10 +105,6 @@ async function createLogGroup({ clients, manifest, names, tags }: DeployState): 
   );
   console.log(`Log group ready: ${names.logGroup}`);
 }
-
-const isRolePropagationError = (error: unknown): boolean =>
-  (error as { name?: string; message?: string }).name === "InvalidParameterValueException" &&
-  /cannot be assumed/i.test((error as { message?: string }).message ?? "");
 
 async function createFunction(state: DeployState, roleArn: string): Promise<string> {
   const { clients, manifest, names, tags } = state;
@@ -123,14 +118,14 @@ async function createFunction(state: DeployState, roleArn: string): Promise<stri
       clients.lambda.send(
         new CreateFunctionCommand(createFunctionInput(names, roleArn, zip, tags)),
       ),
-    { attempts: ROLE_PROPAGATION_ATTEMPTS, delayMs: ROLE_PROPAGATION_DELAY_MS, shouldRetry: isRolePropagationError },
+    { ...ROLE_PROPAGATION, shouldRetry: isLambdaRoleNotAssumable },
   );
   await waitUntilFunctionActiveV2(
     { client: clients.lambda, maxWaitTime: LAMBDA_ACTIVE_WAIT_SECONDS },
     { FunctionName: names.functionName },
   );
   console.log(`Function ready: ${names.functionName}`);
-  return created.FunctionArn ?? "";
+  return requireValue(created.FunctionArn, "the function ARN");
 }
 
 async function createRule(state: DeployState, functionArn: string): Promise<void> {
@@ -157,14 +152,14 @@ async function createRule(state: DeployState, functionArn: string): Promise<void
 async function main(): Promise<void> {
   const clients = createLabClients();
   const runId = randomBytes(RUN_ID_BYTES).toString("hex");
-  const manifest = Manifest.create(MANIFEST_PATH, runId, REGION);
-  const identity = await clients.sts.send(new GetCallerIdentityCommand({}));
+  const accountId = await callerAccountId(clients.sts);
+  const manifest = Manifest.create(MANIFEST_PATH, runId, REGION, accountId);
   const state: DeployState = {
     clients,
     manifest,
     names: labNames(runId),
     tags: labTags(runId),
-    accountId: identity.Account ?? "",
+    accountId,
   };
   console.log(`Deploying run ${runId} in ${REGION}`);
   await createBucket(state);

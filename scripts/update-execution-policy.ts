@@ -1,8 +1,8 @@
 import { PutRolePolicyCommand } from "@aws-sdk/client-iam";
-import { GetCallerIdentityCommand } from "@aws-sdk/client-sts";
 import { labNames, MANIFEST_PATH } from "../src/config/lab-config";
 import { createLabClients } from "../src/lab/aws-clients";
 import { executionPolicy } from "../src/lab/iam-documents";
+import { assertManifestMatchesCaller } from "../src/lab/account-guard";
 import { Manifest } from "../src/lab/manifest";
 
 /**
@@ -11,9 +11,10 @@ import { Manifest } from "../src/lab/manifest";
  */
 async function main(): Promise<void> {
   const clients = createLabClients();
-  const names = labNames(Manifest.load(MANIFEST_PATH).runId);
-  const identity = await clients.sts.send(new GetCallerIdentityCommand({}));
-  const document = executionPolicy({ bucket: names.bucket, accountId: identity.Account ?? "", logGroup: names.logGroup });
+  const manifest = Manifest.load(MANIFEST_PATH);
+  await assertManifestMatchesCaller(manifest, clients.sts);
+  const names = labNames(manifest.runId);
+  const document = executionPolicy({ bucket: names.bucket, accountId: manifest.accountId, logGroup: names.logGroup });
   await clients.iam.send(
     new PutRolePolicyCommand({ RoleName: names.executionRole, PolicyName: names.executionPolicy, PolicyDocument: JSON.stringify(document) }),
   );

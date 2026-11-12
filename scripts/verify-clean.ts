@@ -1,6 +1,7 @@
 import { MANIFEST_PATH } from "../src/config/lab-config";
 import { createLabClients } from "../src/lab/aws-clients";
 import { createResourceOps } from "../src/lab/aws-resource-ops";
+import { assertManifestMatchesCaller } from "../src/lab/account-guard";
 import { Manifest } from "../src/lab/manifest";
 import { findLeftovers } from "../src/lab/teardown";
 
@@ -8,7 +9,9 @@ const ARCHIVE_FLAG = "--archive";
 
 async function main(): Promise<void> {
   const manifest = Manifest.load(MANIFEST_PATH);
-  const results = await findLeftovers(manifest, createResourceOps(createLabClients()));
+  const clients = createLabClients();
+  await assertManifestMatchesCaller(manifest, clients.sts);
+  const results = await findLeftovers(manifest, createResourceOps(clients));
   const leftovers = results.filter((result) => result.exists);
 
   for (const result of results) {

@@ -36,7 +36,7 @@ Nothing here is taken on trust from the announcement posts: each claim worth des
 ## Quick start (no AWS needed)
 
 ```bash
-pnpm install
+pnpm install --frozen-lockfile
 pnpm typecheck
 pnpm test
 pnpm lint
@@ -70,12 +70,12 @@ pnpm teardown
 pnpm verify-clean --archive
 ```
 
-What `pnpm run deploy` creates, all tagged `lab=s3-annotations-lab`, `run-id=<id>` and the required tag set from `src/config/lab-config.ts`:
+What `pnpm run deploy` creates, all tagged `lab=s3-annotations-lab`, `run-id=<id>` and any extra tags you pass in `LAB_EXTRA_TAGS` (JSON object of strings, for example `LAB_EXTRA_TAGS='{"Team":"my-team","Environment":"testing"}'`). Organizations that enforce tags at creation time reject a create call that lacks them, so export the variable in every shell that runs `deploy`:
 
 | Resource | Notes |
 |---|---|
 | S3 bucket `s3-annotations-lab-<run-id>` | Versioned, SSE-S3, public access blocked, EventBridge notifications on. |
-| IAM role for the Lambda | Least privilege: object read and annotation read/write on `docs/*` of that bucket, `bedrock:InvokeModel` on the Nova Lite inference profile and foundation model, writes to its own log group. |
+| IAM role for the Lambda | Least privilege: object read and annotation write on `docs/*` of that bucket (no annotation read: the handler never reads annotations), `bedrock:InvokeModel` on the Nova Lite inference profile and foundation model, writes to its own log group. |
 | Lambda (`nodejs22.x`, arm64) | The bundled zip. |
 | CloudWatch log group | Created explicitly, retention 1 day. |
 | EventBridge rule and Lambda permission | `Object Created`, bucket and prefix `docs/`. |
@@ -123,11 +123,13 @@ pnpm verify-clean --archive
 
 ## Security notes
 
-The AWS account id is read from STS at runtime and is never written to a committed file. `.lab/` (the manifest) and `results/` (run outputs) are git-ignored; they contain your account id and resource names, so mask them before sharing. The Lambda role is limited to the lab bucket, the `docs/` prefix and the Nova Lite inference profile. Fixture documents are synthetic and contain fictitious data only; one of them (`injection-en.txt`) is a deliberate prompt-injection probe.
+The AWS account id is read from STS at runtime and is never written to a committed file. `.lab/` (the manifest) and `results/` (run outputs) are git-ignored; they contain your account id and resource names, so mask them before sharing. The Lambda role is limited to the lab bucket, the `docs/` prefix and the Nova Lite inference profile. Fixture documents are synthetic and contain fictitious data only; one of them (`injection-en.txt`) is a deliberate prompt-injection probe. The model output is untrusted: a manipulated document can set fields such as `pii_present` or `summary`, so never use them to decide an irreversible action or to skip PII handling.
+
+Safety nets in teardown: the manifest stores the account id and region, and `teardown`, `verify-clean` and `enable-annotation-table` abort when the current credentials belong to another account. A manifest entry whose id does not belong to the run is rejected, so an edited manifest cannot point the deletion at someone else's resources. The handler skips objects above 5 MiB without reading them.
 
 ## Disclaimer
 
-Results depend on your account, region and the service version on the day you run them. The numbers in the article come from one run in `us-east-1` on 2026-11-10 and are evidence, not guarantees; S3 annotations are new and behavior can change. Review the IAM documents in `src/lab/iam-documents.ts` before deploying into an account you care about. The trust policy conditions for the metadata role and the exact error names the service returns are assumptions that the lab verifies rather than documents.
+Results depend on your account, region and the service version on the day you run them. The numbers in the article come from runs in `us-east-1` on 2026-11-10 and 2026-11-11 and are evidence, not guarantees; S3 annotations are new and behavior can change. Review the IAM documents in `src/lab/iam-documents.ts` before deploying into an account you care about. The trust policy conditions for the metadata role and the exact error names the service returns are assumptions that the lab verifies rather than documents.
 
 ## License
 

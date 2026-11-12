@@ -9,18 +9,24 @@ export const RUN_ID_TAG_KEY = "run-id";
  */
 export function parseExtraTags(raw: string | undefined): Readonly<Record<string, string>> {
   if (!raw) return {};
-  const parsed: unknown = JSON.parse(raw);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error("LAB_EXTRA_TAGS must be valid JSON");
+  }
   const isStringMap =
     typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) && Object.values(parsed).every((value) => typeof value === "string");
   if (!isStringMap) throw new Error("LAB_EXTRA_TAGS must be a JSON object whose values are strings");
   return parsed as Record<string, string>;
 }
 
-export const EXTRA_TAGS: Readonly<Record<string, string>> = parseExtraTags(process.env.LAB_EXTRA_TAGS);
 export const NAME_PREFIX = "s3-annotations-lab";
 
 export const DOCS_PREFIX = "docs/";
 export const EXPERIMENT_PREFIX = "lab/";
+
+export const ROLE_PROPAGATION = { attempts: 12, delayMs: 5000 } as const;
 
 export const MANIFEST_PATH = ".lab/manifest.json";
 export const RESULTS_DIR = "results";
@@ -55,6 +61,7 @@ export const BEDROCK_MODEL = {
 
 export const CLASSIFIER_LIMITS = {
   maxDocumentChars: 20000,
+  maxObjectBytes: 5 * MEBIBYTE,
 } as const;
 
 export const LAMBDA_SETTINGS = {
@@ -110,5 +117,5 @@ export function labNames(runId: string): LabNames {
 }
 
 export function labTags(runId: string): Record<string, string> {
-  return { ...EXTRA_TAGS, [LAB_TAG.key]: LAB_TAG.value, [RUN_ID_TAG_KEY]: runId };
+  return { ...parseExtraTags(process.env.LAB_EXTRA_TAGS), [LAB_TAG.key]: LAB_TAG.value, [RUN_ID_TAG_KEY]: runId };
 }

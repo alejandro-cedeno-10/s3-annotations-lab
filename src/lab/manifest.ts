@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { z } from "zod";
+import { NAME_PREFIX } from "../config/lab-config";
 
 export const RESOURCE_TYPES = [
   "s3-bucket",
@@ -23,12 +24,26 @@ export const manifestEntrySchema = z.object({
   recordedAt: z.iso.datetime(),
 });
 
-export const manifestSchema = z.object({
-  runId: z.string().min(1),
-  region: z.string().min(1),
-  createdAt: z.iso.datetime(),
-  entries: z.array(manifestEntrySchema),
-});
+const AWS_MANAGED_TYPES: readonly ResourceType[] = ["s3tables-table-bucket"];
+
+export const ownsEntry = (runId: string, entry: { type: ResourceType; id: string }): boolean =>
+  AWS_MANAGED_TYPES.includes(entry.type) || entry.id.includes(`${NAME_PREFIX}-${runId}`);
+
+export const manifestSchema = z
+  .object({
+    runId: z.string().min(1),
+    region: z.string().min(1),
+    accountId: z.string().regex(/^\d{12}$/),
+    createdAt: z.iso.datetime(),
+    entries: z.array(manifestEntrySchema),
+  })
+  .superRefine((data, context) => {
+    data.entries.forEach((entry, index) => {
+      if (!ownsEntry(data.runId, entry)) {
+        context.addIssue({ code: "custom", path: ["entries", index, "id"], message: `Entry id does not belong to run ${data.runId}` });
+      }
+    });
+  });
 
 export type ManifestEntry = z.infer<typeof manifestEntrySchema>;
 export type ManifestData = z.infer<typeof manifestSchema>;
@@ -49,11 +64,11 @@ export class Manifest {
     private readonly data: ManifestData,
   ) {}
 
-  static create(path: string, runId: string, region: string, now: Date = new Date()): Manifest {
+  static create(path: string, runId: string, region: string, accountId: string, now: Date = new Date()): Manifest {
     if (existsSync(path)) {
       throw new Error(`Manifest already exists at ${path}. Run teardown and verify-clean --archive first.`);
     }
-    const manifest = new Manifest(path, { runId, region, createdAt: now.toISOString(), entries: [] });
+    const manifest = new Manifest(path, { runId, region, accountId, createdAt: now.toISOString(), entries: [] });
     manifest.flush();
     return manifest;
   }
@@ -73,6 +88,10 @@ export class Manifest {
     return this.data.region;
   }
 
+  get accountId(): string {
+    return this.data.accountId;
+  }
+
   get entries(): readonly ManifestEntry[] {
     return this.data.entries;
   }
@@ -82,6 +101,9 @@ export class Manifest {
   }
 
   record(entry: NewEntry, now: Date = new Date()): void {
+    if (!ownsEntry(this.data.runId, entry)) {
+      throw new Error(`Refusing to record ${entry.type} "${entry.id}": it does not belong to run ${this.data.runId}`);
+    }
     this.data.entries.push({ ...entry, details: entry.details ?? {}, recordedAt: now.toISOString() });
     this.flush();
   }
@@ -94,6 +116,8 @@ export class Manifest {
 
   private flush(): void {
     mkdirSync(dirname(this.path), { recursive: true });
-    writeFileSync(this.path, `${JSON.stringify(this.data, null, 2)}\n`, "utf-8");
+    const temporary = `${this.path}.tmp`;
+    writeFileSync(temporary, `${JSON.stringify(this.data, null, 2)}\n`, "utf-8");
+    renameSync(temporary, this.path);
   }
 }

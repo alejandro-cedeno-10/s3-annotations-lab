@@ -2,7 +2,7 @@ import { GetObjectCommand, HeadObjectCommand, type S3Client } from "@aws-sdk/cli
 import { z } from "zod";
 import { AnnotationStore } from "../annotations/annotation-store";
 import { isPreconditionFailed } from "../aws/error-info";
-import { AI_ANNOTATIONS } from "../config/lab-config";
+import { AI_ANNOTATIONS, CLASSIFIER_LIMITS } from "../config/lab-config";
 import { toClassification } from "./classification-schema";
 import type { DocumentClassifier } from "./classifier";
 
@@ -18,7 +18,8 @@ export type ObjectCreatedEvent = z.infer<typeof objectCreatedEventSchema>;
 
 export type EnrichmentOutcome =
   | { status: "annotated"; key: string; versionId?: string; etag: string }
-  | { status: "skipped-stale"; key: string; stage: "read" | "write" };
+  | { status: "skipped-stale"; key: string; stage: "read" | "write" }
+  | { status: "skipped-too-large"; key: string; bytes: number };
 
 export interface EnrichmentDependencies {
   s3: S3Client;
@@ -27,6 +28,13 @@ export interface EnrichmentDependencies {
 }
 
 type Stage = "read" | "write";
+
+class ObjectTooLargeError extends Error {
+  constructor(readonly bytes: number) {
+    super(`Object of ${bytes} bytes exceeds the ${CLASSIFIER_LIMITS.maxObjectBytes} byte limit`);
+    this.name = "ObjectTooLargeError";
+  }
+}
 
 class StaleObjectError extends Error {
   constructor(readonly stage: Stage) {
@@ -51,6 +59,7 @@ async function readObjectText(
 ): Promise<{ text: string; etag: string; versionId?: string }> {
   const head = await s3.send(new HeadObjectCommand({ Bucket: bucket, Key: key, VersionId: versionId }));
   const etag = head.ETag ?? "";
+  if ((head.ContentLength ?? 0) > CLASSIFIER_LIMITS.maxObjectBytes) throw new ObjectTooLargeError(head.ContentLength ?? 0);
   const body = await guardPrecondition("read", () =>
     s3.send(new GetObjectCommand({ Bucket: bucket, Key: key, VersionId: head.VersionId ?? versionId, IfMatch: etag })),
   );
@@ -92,6 +101,9 @@ export function createEnrichmentHandler(deps: EnrichmentDependencies) {
     } catch (error) {
       if (error instanceof StaleObjectError) {
         return { status: "skipped-stale", key, stage: error.stage };
+      }
+      if (error instanceof ObjectTooLargeError) {
+        return { status: "skipped-too-large", key, bytes: error.bytes };
       }
       throw error;
     }

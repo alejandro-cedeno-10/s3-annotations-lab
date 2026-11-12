@@ -27,7 +27,7 @@ export interface ExecutionPolicyInput {
 }
 
 /**
- * Least privilege for the enrichment Lambda: object read and annotation read/write limited to the
+ * Least privilege for the enrichment Lambda: object read and annotation write limited to the
  * docs/ prefix of the lab bucket, Converse on the Nova Lite inference profile and the foundation
  * model behind it, and log writes to its own pre-created log group.
  */
@@ -47,8 +47,6 @@ export function executionPolicy(input: ExecutionPolicyInput): PolicyDocument {
           "s3:GetObjectVersion",
           "s3:PutObjectAnnotation",
           "s3:PutObjectVersionAnnotation",
-          "s3:GetObjectAnnotation",
-          "s3:GetObjectVersionAnnotation",
         ],
         Resource: objectsArn,
       },
